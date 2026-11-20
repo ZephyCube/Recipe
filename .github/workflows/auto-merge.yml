@@ -1,0 +1,39 @@
+name: Auto merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  auto-merge:
+    # Only PRs opened from branches in this repo (never forks) by the owner or Claude.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.pull_request.user.login == github.repository_owner ||
+       startsWith(github.event.pull_request.head.ref, 'claude/'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge (squash)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          set -euo pipefail
+          # Drafts cannot be merged, so mark them ready first.
+          if [ "$IS_DRAFT" = "true" ]; then gh pr ready "$PR_URL"; fi
+          # Waits for required checks if there are any; otherwise merges now.
+          gh pr merge --auto --squash "$PR_URL" || gh pr merge --squash "$PR_URL"
+          sleep 5
+          STATE=$(gh pr view "$PR_URL" --json state -q .state)
+          echo "PR state: $STATE"
+          # Merges made with GITHUB_TOKEN do not trigger push workflows,
+          # so start the release job explicitly.
+          if [ "$STATE" = "MERGED" ]; then
+            gh workflow run auto-release.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.event.repository.default_branch }}"
+          fi
