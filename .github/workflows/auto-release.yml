@@ -37,10 +37,11 @@ jobs:
           build() {
             rm -rf build && mkdir -p build/src && git archive "$1" | tar -x -C build/src
             local name="$PACK-$2"
-            # Zip: only the pack folder. .mcpack: the pack files at the root.
+            # Zip: only the pack folder. .mcpack: the pack files at the root. -BP.mcaddon: the behavior pack folder.
             (cd build/src && zip -qr "../$name.zip" "$PACK")
             (cd "build/src/$PACK" && zip -qr "../../$name.mcpack" .)
-            FILES=("build/$name.zip" "build/$name.mcpack")
+            (cd build/src && zip -qr "../$name-BP.mcaddon" "$PACK")
+            FILES=("build/$name.zip" "build/$name.mcpack" "build/$name-BP.mcaddon")
           }
           declare -A SEEN=()
           for sha in $(git rev-list --reverse HEAD); do

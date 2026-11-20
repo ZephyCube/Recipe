@@ -9,7 +9,7 @@ Custom crafting recipes for Minecraft Bedrock Edition.
 
 ## Install
 
-Download `ZephyCubeRecipe-v1.0.1.mcpack` from the Releases page and open it. Or install by hand: copy the `ZephyCubeRecipe` folder into your world's `behavior_packs` folder and add its `uuid` and `version` (from `manifest.json`) to the world's `world_behavior_packs.json`.
+Download `ZephyCubeRecipe-v1.0.1-BP.mcaddon` (behavior pack; this add-on has no resource pack) or `ZephyCubeRecipe-v1.0.1.mcpack` from the Releases page and open it. Or install by hand: copy the `ZephyCubeRecipe` folder into your world's `behavior_packs` folder and add its `uuid` and `version` (from `manifest.json`) to the world's `world_behavior_packs.json`.
 
 ## Features
 | Recipe | Pattern |
