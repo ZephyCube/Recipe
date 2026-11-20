@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      rebuild:
+        description: "Also rebuild the files of versions that already have a release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -16,30 +21,50 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Walks history oldest -> newest. For every commit that introduces a
-      # manifest version without a matching tag, builds the zip/mcpack from
-      # that commit's files and publishes a release. Already released
-      # versions are skipped, so this is safe to re-run.
+      # Walks history oldest -> newest. For every manifest version without a
+      # matching tag, builds the release files from the commit that introduced
+      # that version and publishes a release. Already released versions are
+      # skipped, so this is safe to re-run. With "rebuild" on, the files of
+      # existing releases are rebuilt and replaced (release notes and tags stay).
       - name: Release every unreleased version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REBUILD: ${{ inputs.rebuild || false }}
         run: |
           set -euo pipefail
+          PACK=ZephyCubeRecipe
+          # Builds the release files of commit $1 for tag $2 into build/ and lists them in FILES.
+          build() {
+            rm -rf build && mkdir -p build/src && git archive "$1" | tar -x -C build/src
+            local name="$PACK-$2"
+            # Zip: only the pack folder. .mcpack: the pack files at the root.
+            (cd build/src && zip -qr "../$name.zip" "$PACK")
+            (cd "build/src/$PACK" && zip -qr "../../$name.mcpack" .)
+            FILES=("build/$name.zip" "build/$name.mcpack")
+          }
+          declare -A SEEN=()
           for sha in $(git rev-list --reverse HEAD); do
-            VERSION=$(git show "$sha:ZephyCubeRecipe/manifest.json" 2>/dev/null \
+            VERSION=$(git show "$sha:$PACK/manifest.json" 2>/dev/null \
               | jq -r '.header.version | map(tostring) | join(".")') || continue
             [ -n "$VERSION" ] || continue
             TAG="v$VERSION"
+            [ -z "${SEEN[$TAG]:-}" ] || continue
+            SEEN[$TAG]=1
             if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+              [ "$REBUILD" = "true" ] || continue
+              echo "Rebuilding files of $TAG from $sha"
+              build "$sha" "$TAG"
+              gh release upload "$TAG" "${FILES[@]}" --clobber
+              KEEP=$(printf '%s\n' "${FILES[@]##*/}")
+              gh release view "$TAG" --json assets -q '.assets[].name' | while read -r a; do
+                grep -qxF "$a" <<<"$KEEP" || gh release delete-asset "$TAG" "$a" -y
+              done
               continue
             fi
             echo "Releasing $TAG from $sha"
-            rm -rf build && mkdir -p build/src && git archive "$sha" | tar -x -C build/src
-            NAME="ZephyCubeRecipe-$TAG"
-            (cd build/src && zip -qr "../$NAME.zip" ZephyCubeRecipe)
-            (cd build/src/ZephyCubeRecipe && zip -qr "../../$NAME.mcpack" .)
-            if ! gh release create "$TAG" "build/$NAME.zip" "build/$NAME.mcpack" \
-              --target "$sha" --title "ZephyCubeRecipe $TAG" --generate-notes; then
+            build "$sha" "$TAG"
+            if ! gh release create "$TAG" "${FILES[@]}" \
+              --target "$sha" --title "$PACK $TAG" --generate-notes; then
               # GITHUB_TOKEN may not tag a commit that adds .github/workflows files.
               # Retry on a snapshot commit with identical pack files minus .github.
               echo "Retrying $TAG on a workflow-free snapshot commit"
@@ -50,9 +75,9 @@ jobs:
               GIT_INDEX_FILE=$IDX git rm -rqf --cached .github
               TREE=$(GIT_INDEX_FILE=$IDX git write-tree)
               PARENT=$(git rev-parse -q --verify "$sha^" || true)
-              SNAP=$(git commit-tree "$TREE" ${PARENT:+-p "$PARENT"} -m "ZephyCubeRecipe $TAG (release snapshot)")
+              SNAP=$(git commit-tree "$TREE" ${PARENT:+-p "$PARENT"} -m "$PACK $TAG (release snapshot)")
               git push origin "$SNAP:refs/tags/$TAG"
-              gh release create "$TAG" "build/$NAME.zip" "build/$NAME.mcpack" \
-                --title "ZephyCubeRecipe $TAG" --generate-notes
+              gh release create "$TAG" "${FILES[@]}" \
+                --title "$PACK $TAG" --generate-notes
             fi
           done
