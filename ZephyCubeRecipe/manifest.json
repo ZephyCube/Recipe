@@ -1,0 +1,29 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "ZephyCube Recipe",
+    "description": "Custom crafting recipes.",
+    "uuid": "687f5a62-1658-5b77-917f-0853d4a37d34",
+    "version": [
+      1,
+      0,
+      0
+    ],
+    "min_engine_version": [
+      1,
+      21,
+      0
+    ]
+  },
+  "modules": [
+    {
+      "type": "data",
+      "uuid": "eb9fff3f-09b5-5740-becc-3be51827f5df",
+      "version": [
+        1,
+        0,
+        0
+      ]
+    }
+  ]
+}
